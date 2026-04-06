@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flight Passport · 飞行护照</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, 'PingFang SC', 'Helvetica Neue', sans-serif; background: #0a0f1e; color: #fff; height: 100vh; display: flex; overflow: hidden; }
+
+#sidebar {
+  width: 340px; flex-shrink: 0;
+  background: #0e1628;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  display: flex; flex-direction: column;
+  height: 100vh; overflow: hidden;
+}
+.sidebar-header {
+  padding: 24px 20px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: linear-gradient(180deg,#131f3a 0%,#0e1628 100%);
+}
+.sidebar-header h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: #fff; }
+.sidebar-header p  { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 3px; text-transform: uppercase; letter-spacing: 1.2px; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.stat-card  { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px 14px; }
+.stat-label { font-size: 10px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.9px; margin-bottom: 5px; }
+.stat-value { font-size: 22px; font-weight: 700; color: #fff; line-height: 1; }
+.stat-sub   { font-size: 10px; color: rgba(255,255,255,0.3); margin-top: 3px; }
+
+.flights-section { flex: 1; overflow-y: auto; padding: 14px; }
+.flights-section::-webkit-scrollbar { width: 4px; }
+.flights-section::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+.section-title { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.3); margin-bottom: 10px; }
+
+.flight-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.07);
+  margin-bottom: 7px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  background: rgba(255,255,255,0.03);
+}
+.flight-item:hover  { background: rgba(255,255,255,0.07); }
+.flight-item.active { border-color: #4a9eff; background: rgba(74,158,255,0.1); }
+.flight-dot { width: 8px; height: 8px; border-radius: 50%; background: #4a9eff; flex-shrink: 0; }
+.flight-dot.active { background: #fff; box-shadow: 0 0 6px #4a9eff; }
+.flight-route { font-size: 14px; font-weight: 600; color: #fff; }
+.flight-info  { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 1px; }
+.flight-dist  { margin-left: auto; font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.45); white-space: nowrap; }
+.remove-btn   { font-size: 18px; color: rgba(255,255,255,0.2); cursor: pointer; flex-shrink: 0; line-height: 1; transition: color 0.1s; padding: 0 2px; }
+.remove-btn:hover { color: #e24b4a; }
+
+#empty-hint { font-size: 13px; color: rgba(255,255,255,0.25); text-align: center; margin-top: 32px; line-height: 1.8; }
+
+.add-section { padding: 14px; border-top: 1px solid rgba(255,255,255,0.08); background: #0e1628; }
+.input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.iata-input {
+  flex: 1; width: 0;
+  padding: 9px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 9px;
+  font-size: 15px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+  color: #fff; outline: none; transition: border-color 0.15s;
+}
+.iata-input::placeholder { font-weight: 400; letter-spacing: 0; color: rgba(255,255,255,0.2); text-transform: none; font-size: 13px; }
+.iata-input:focus { border-color: #4a9eff; }
+.arrow-sep { color: rgba(255,255,255,0.3); font-size: 18px; flex-shrink: 0; }
+.add-btn {
+  width: 100%; padding: 10px;
+  background: #4a9eff; border: none; border-radius: 9px;
+  color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.add-btn:hover { opacity: 0.88; }
+.error-msg { font-size: 11px; color: #ff6b6b; margin-top: 6px; min-height: 16px; }
+
+#map-area { flex: 1; position: relative; }
+#map { width: 100%; height: 100%; }
+#map-loading {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #0a0f1e; font-size: 14px; color: rgba(255,255,255,0.4); z-index: 9999; gap: 12px;
+}
+.spinner {
+  width: 32px; height: 32px; border: 3px solid rgba(74,158,255,0.2);
+  border-top-color: #4a9eff; border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Leaflet dark style */
+.leaflet-tile-pane { filter: brightness(0.55) saturate(0.5) hue-rotate(195deg); }
+.leaflet-control-attribution { background: rgba(0,0,0,0.45) !important; color: rgba(255,255,255,0.2) !important; font-size: 9px !important; }
+.leaflet-control-attribution a { color: rgba(255,255,255,0.3) !important; }
+.leaflet-control-zoom a { background: #1a2640 !important; color: rgba(255,255,255,0.7) !important; border-color: rgba(255,255,255,0.1) !important; }
+
+.ap-tip {
+  background: rgba(8,14,28,0.92) !important;
+  border: 1px solid rgba(74,158,255,0.5) !important;
+  color: #fff !important; font-size: 12px !important; font-weight: 600 !important;
+  padding: 3px 8px !important; border-radius: 6px !important;
+  box-shadow: none !important; white-space: nowrap;
+}
+.ap-tip::before { display: none !important; }
+
+.map-badge {
+  position: absolute; top: 14px; right: 14px; z-index: 1000;
+  background: rgba(8,14,28,0.82);
+  border: 1px solid rgba(74,158,255,0.2);
+  border-radius: 12px; padding: 12px 16px;
+  pointer-events: none;
+}
+.map-badge p    { font-size: 10px; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.8px; text-align: right; }
+.map-badge span { font-size: 22px; font-weight: 700; color: #fff; display: block; text-align: right; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div class="sidebar-header">
+    <h1>✈ Passport</h1>
+    <p>All-Time · Flight Journal</p>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Flights</div>
+      <div class="stat-value" id="st-flights">0</div>
+      <div class="stat-sub" id="st-longhaul">0 长途</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Distance</div>
+      <div class="stat-value" id="st-dist">0 km</div>
+      <div class="stat-sub" id="st-earth">0x 地球周长</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Flight Time</div>
+      <div class="stat-value" id="st-time">0h 0m</div>
+      <div class="stat-sub">估算 @ 900 km/h</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Airports</div>
+      <div class="stat-value" id="st-airports">0</div>
+      <div class="stat-sub" id="st-countries">0 个国家/地区</div>
+    </div>
+  </div>
+  <div class="flights-section">
+    <div class="section-title">Routes</div>
+    <div id="flight-list"></div>
+    <div id="empty-hint">输入机场 IATA 代码<br>开始记录你的飞行足迹</div>
+  </div>
+  <div class="add-section">
+    <div class="section-title">Add Flight</div>
+    <div class="input-row">
+      <input class="iata-input" id="inp-from" placeholder="出发 PVG" maxlength="4" />
+      <span class="arrow-sep">→</span>
+      <input class="iata-input" id="inp-to" placeholder="到达 LAX" maxlength="4" />
+    </div>
+    <button class="add-btn" onclick="addFlight()">添加航线</button>
+    <div class="error-msg" id="err-msg"></div>
+  </div>
+</div>
+
+<div id="map-area">
+  <div id="map"></div>
+  <div id="map-loading">
+    <div class="spinner"></div>
+    <span>地图加载中，请确保网络畅通…</span>
+  </div>
+  <div class="map-badge">
+    <p>总飞行距离</p>
+    <span id="ov-dist">0 km</span>
+  </div>
+</div>
+
+<script>
+const AIRPORTS = {
+  PVG:{name:"上海浦东",city:"上海",lat:31.1434,lon:121.8052,country:"CN"},
+  JJN:{name:"泉州晋江",city:"泉州",lat:24.7976,lon:118.5896,country:"CN"},
+  PEK:{name:"北京首都",city:"北京",lat:40.0799,lon:116.6031,country:"CN"},
+  PKX:{name:"北京大兴",city:"北京",lat:39.5097,lon:116.4105,country:"CN"},
+  SHA:{name:"上海虹桥",city:"上海",lat:31.1979,lon:121.3362,country:"CN"},
+  CAN:{name:"广州白云",city:"广州",lat:23.3924,lon:113.2988,country:"CN"},
+  SZX:{name:"深圳宝安",city:"深圳",lat:22.6393,lon:113.8107,country:"CN"},
+  CTU:{name:"成都双流",city:"成都",lat:30.5785,lon:103.9471,country:"CN"},
+  TFU:{name:"成都天府",city:"成都",lat:30.3132,lon:104.4440,country:"CN"},
+  XIY:{name:"西安咸阳",city:"西安",lat:34.4471,lon:108.7516,country:"CN"},
+  KMG:{name:"昆明长水",city:"昆明",lat:25.1019,lon:102.9293,country:"CN"},
+  HGH:{name:"杭州萧山",city:"杭州",lat:30.2295,lon:120.4346,country:"CN"},
+  NKG:{name:"南京禄口",city:"南京",lat:31.7420,lon:118.8620,country:"CN"},
+  WUH:{name:"武汉天河",city:"武汉",lat:30.7838,lon:114.2081,country:"CN"},
+  CSX:{name:"长沙黄花",city:"长沙",lat:28.1892,lon:113.2196,country:"CN"},
+  HAK:{name:"海口美兰",city:"海口",lat:19.9349,lon:110.4589,country:"CN"},
+  SYX:{name:"三亚凤凰",city:"三亚",lat:18.3029,lon:109.4123,country:"CN"},
+  DLC:{name:"大连周水子",city:"大连",lat:38.9657,lon:121.5387,country:"CN"},
+  TSN:{name:"天津滨海",city:"天津",lat:39.1244,lon:117.3462,country:"CN"},
+  XMN:{name:"厦门高崎",city:"厦门",lat:24.5440,lon:118.1277,country:"CN"},
+  FOC:{name:"福州长乐",city:"福州",lat:25.9352,lon:119.6631,country:"CN"},
+  URC:{name:"乌鲁木齐地窝堡",city:"乌鲁木齐",lat:43.9071,lon:87.4742,country:"CN"},
+  HRB:{name:"哈尔滨太平",city:"哈尔滨",lat:45.6234,lon:126.2500,country:"CN"},
+  SHE:{name:"沈阳桃仙",city:"沈阳",lat:41.6398,lon:123.4830,country:"CN"},
+  CKG:{name:"重庆江北",city:"重庆",lat:29.7192,lon:106.6417,country:"CN"},
+  TAO:{name:"青岛胶东",city:"青岛",lat:36.3622,lon:120.3147,country:"CN"},
+  HLD:{name:"海拉尔",city:"呼伦贝尔",lat:49.2086,lon:119.8223,country:"CN"},
+  LXA:{name:"拉萨贡嘎",city:"拉萨",lat:29.2960,lon:90.9100,country:"CN"},
+  CGQ:{name:"长春龙嘉",city:"长春",lat:43.9961,lon:125.6853,country:"CN"},
+  MFM:{name:"澳门",city:"澳门",lat:22.1496,lon:113.5920,country:"MO"},
+  HKG:{name:"香港",city:"香港",lat:22.3080,lon:113.9185,country:"HK"},
+  TPE:{name:"台湾桃园",city:"台北",lat:25.0777,lon:121.2328,country:"TW"},
+  LAX:{name:"洛杉矶",city:"洛杉矶",lat:33.9425,lon:-118.4081,country:"US"},
+  JFK:{name:"肯尼迪",city:"纽约",lat:40.6413,lon:-73.7781,country:"US"},
+  ORD:{name:"奥黑尔",city:"芝加哥",lat:41.9742,lon:-87.9073,country:"US"},
+  SFO:{name:"旧金山",city:"旧金山",lat:37.6213,lon:-122.3790,country:"US"},
+  SEA:{name:"西雅图-塔科马",city:"西雅图",lat:47.4502,lon:-122.3088,country:"US"},
+  LAS:{name:"哈里里德",city:"拉斯维加斯",lat:36.0840,lon:-115.1537,country:"US"},
+  DFW:{name:"达拉斯-沃斯堡",city:"达拉斯",lat:32.8998,lon:-97.0403,country:"US"},
+  MIA:{name:"迈阿密",city:"迈阿密",lat:25.7959,lon:-80.2870,country:"US"},
+  BOS:{name:"洛根",city:"波士顿",lat:42.3656,lon:-71.0096,country:"US"},
+  ATL:{name:"哈茨菲尔德",city:"亚特兰大",lat:33.6367,lon:-84.4281,country:"US"},
+  HNL:{name:"伊诺耶",city:"檀香山",lat:21.3187,lon:-157.9224,country:"US"},
+  IAD:{name:"杜勒斯",city:"华盛顿",lat:38.9531,lon:-77.4565,country:"US"},
+  CMH:{name:"约翰·格伦",city:"哥伦布",lat:39.9979,lon:-82.8918,country:"US"},
+  IAH:{name:"乔治·布什洲际",city:"休斯顿",lat:29.9902,lon:-95.3367,country:"US"},
+  LHR:{name:"希思罗",city:"伦敦",lat:51.4700,lon:-0.4543,country:"GB"},
+  LGW:{name:"盖特威克",city:"伦敦",lat:51.1537,lon:-0.1821,country:"GB"},
+  CDG:{name:"戴高乐",city:"巴黎",lat:49.0097,lon:2.5479,country:"FR"},
+  FRA:{name:"法兰克福",city:"法兰克福",lat:50.0379,lon:8.5622,country:"DE"},
+  AMS:{name:"史基浦",city:"阿姆斯特丹",lat:52.3086,lon:4.7639,country:"NL"},
+  MAD:{name:"马德里",city:"马德里",lat:40.4936,lon:-3.5668,country:"ES"},
+  FCO:{name:"菲乌米奇诺",city:"罗马",lat:41.8003,lon:12.2389,country:"IT"},
+  MXP:{name:"马尔彭萨",city:"米兰",lat:45.6306,lon:8.7281,country:"IT"},
+  MUC:{name:"慕尼黑",city:"慕尼黑",lat:48.3537,lon:11.7750,country:"DE"},
+  ZRH:{name:"苏黎世",city:"苏黎世",lat:47.4647,lon:8.5492,country:"CH"},
+  BCN:{name:"巴塞罗那",city:"巴塞罗那",lat:41.2971,lon:2.0785,country:"ES"},
+  VIE:{name:"维也纳",city:"维也纳",lat:48.1102,lon:16.5697,country:"AT"},
+  IST:{name:"伊斯坦布尔",city:"伊斯坦布尔",lat:41.2753,lon:28.7519,country:"TR"},
+  ATH:{name:"雅典",city:"雅典",lat:37.9364,lon:23.9445,country:"GR"},
+  CPH:{name:"哥本哈根",city:"哥本哈根",lat:55.6180,lon:12.6508,country:"DK"},
+  ARN:{name:"阿兰达",city:"斯德哥尔摩",lat:59.6519,lon:17.9186,country:"SE"},
+  OSL:{name:"加德莫恩",city:"奥斯陆",lat:60.1976,lon:11.1004,country:"NO"},
+  HEL:{name:"万塔",city:"赫尔辛基",lat:60.3172,lon:24.9633,country:"FI"},
+  WAW:{name:"肖邦",city:"华沙",lat:52.1657,lon:20.9671,country:"PL"},
+  PRG:{name:"哈维尔",city:"布拉格",lat:50.1008,lon:14.2600,country:"CZ"},
+  BUD:{name:"费伦茨",city:"布达佩斯",lat:47.4298,lon:19.2611,country:"HU"},
+  GVA:{name:"日内瓦",city:"日内瓦",lat:46.2381,lon:6.1089,country:"CH"},
+  BRU:{name:"布鲁塞尔",city:"布鲁塞尔",lat:50.9010,lon:4.4844,country:"BE"},
+  LIS:{name:"里斯本",city:"里斯本",lat:38.7742,lon:-9.1342,country:"PT"},
+  DXB:{name:"迪拜",city:"迪拜",lat:25.2532,lon:55.3657,country:"AE"},
+  AUH:{name:"阿布扎比",city:"阿布扎比",lat:24.4330,lon:54.6511,country:"AE"},
+  DOH:{name:"哈马德",city:"多哈",lat:25.2609,lon:51.6138,country:"QA"},
+  RUH:{name:"哈利德王",city:"利雅得",lat:24.9576,lon:46.6988,country:"SA"},
+  JED:{name:"阿齐兹王",city:"吉达",lat:21.6796,lon:39.1565,country:"SA"},
+  SIN:{name:"樟宜",city:"新加坡",lat:1.3644,lon:103.9915,country:"SG"},
+  NRT:{name:"成田",city:"东京",lat:35.7648,lon:140.3864,country:"JP"},
+  HND:{name:"羽田",city:"东京",lat:35.5494,lon:139.7798,country:"JP"},
+  KIX:{name:"关西",city:"大阪",lat:34.4347,lon:135.2440,country:"JP"},
+  NGO:{name:"中部国际",city:"名古屋",lat:34.8584,lon:136.8047,country:"JP"},
+  OKA:{name:"那霸",city:"冲绳",lat:26.1958,lon:127.6468,country:"JP"},
+  ICN:{name:"仁川",city:"首尔",lat:37.4691,lon:126.4510,country:"KR"},
+  GMP:{name:"金浦",city:"首尔",lat:37.5583,lon:126.7906,country:"KR"},
+  BKK:{name:"素万那普",city:"曼谷",lat:13.6900,lon:100.7501,country:"TH"},
+  DMK:{name:"廊曼",city:"曼谷",lat:13.9126,lon:100.6067,country:"TH"},
+  HKT:{name:"普吉",city:"普吉",lat:8.1132,lon:98.3169,country:"TH"},
+  KUL:{name:"吉隆坡",city:"吉隆坡",lat:2.7456,lon:101.7099,country:"MY"},
+  MNL:{name:"阿基诺",city:"马尼拉",lat:14.5086,lon:121.0197,country:"PH"},
+  CGK:{name:"苏加诺-哈达",city:"雅加达",lat:-6.1256,lon:106.6559,country:"ID"},
+  SGN:{name:"新山一",city:"胡志明市",lat:10.8188,lon:106.6520,country:"VN"},
+  HAN:{name:"内排",city:"河内",lat:21.2212,lon:105.8072,country:"VN"},
+  RGN:{name:"仰光",city:"仰光",lat:16.9073,lon:96.1332,country:"MM"},
+  PNH:{name:"金边",city:"金边",lat:11.5466,lon:104.8440,country:"KH"},
+  REP:{name:"暹粒",city:"暹粒",lat:13.4107,lon:103.8130,country:"KH"},
+  VTE:{name:"瓦岱",city:"万象",lat:17.9883,lon:102.5633,country:"LA"},
+  DEL:{name:"英迪拉·甘地",city:"新德里",lat:28.5562,lon:77.1000,country:"IN"},
+  BOM:{name:"希瓦吉",city:"孟买",lat:19.0896,lon:72.8656,country:"IN"},
+  SYD:{name:"金斯福德",city:"悉尼",lat:-33.9399,lon:151.1753,country:"AU"},
+  MEL:{name:"墨尔本",city:"墨尔本",lat:-37.6690,lon:144.8410,country:"AU"},
+  BNE:{name:"布里斯班",city:"布里斯班",lat:-27.3842,lon:153.1175,country:"AU"},
+  AKL:{name:"奥克兰",city:"奥克兰",lat:-37.0082,lon:174.7917,country:"NZ"},
+  GRU:{name:"瓜鲁柳斯",city:"圣保罗",lat:-23.4356,lon:-46.4731,country:"BR"},
+  EZE:{name:"埃塞萨",city:"布宜诺斯艾利斯",lat:-34.8222,lon:-58.5358,country:"AR"},
+  LIM:{name:"查韦斯",city:"利马",lat:-12.0219,lon:-77.1143,country:"PE"},
+  BOG:{name:"埃尔多拉多",city:"波哥大",lat:4.7016,lon:-74.1469,country:"CO"},
+  YYZ:{name:"皮尔逊",city:"多伦多",lat:43.6777,lon:-79.6248,country:"CA"},
+  YVR:{name:"温哥华",city:"温哥华",lat:49.1967,lon:-123.1815,country:"CA"},
+  MEX:{name:"胡亚雷斯",city:"墨西哥城",lat:19.4363,lon:-99.0721,country:"MX"},
+  JNB:{name:"奥坦博",city:"约翰内斯堡",lat:-26.1367,lon:28.2411,country:"ZA"},
+  CAI:{name:"开罗",city:"开罗",lat:30.1219,lon:31.4056,country:"EG"},
+  NBO:{name:"肯雅塔",city:"内罗毕",lat:-1.3192,lon:36.9275,country:"KE"},
+  ADD:{name:"博莱",city:"亚的斯亚贝巴",lat:8.9779,lon:38.7993,country:"ET"},
+  CMN:{name:"穆罕默德五世",city:"卡萨布兰卡",lat:33.3675,lon:-7.5897,country:"MA"},
+  SVO:{name:"谢列梅捷沃",city:"莫斯科",lat:55.9726,lon:37.4146,country:"RU"},
+  DME:{name:"多莫杰多沃",city:"莫斯科",lat:55.4088,lon:37.9063,country:"RU"},
+  BER:{name:"勃兰登堡",city:"柏林",lat:52.3667,lon:13.5033,country:"DE"},
+  VVO:{name:"海参崴",city:"符拉迪沃斯托克",lat:43.3990,lon:132.1479,country:"RU"},
+};
+
+let flights = [];
+let activeIdx = -1;
+let map = null;
+let mapLayers = { arcs: [], markers: [] };
+
+function saveFlights() {
+  localStorage.setItem('myFlightsData', JSON.stringify(flights));
+}
+
+function loadFlights() {
+  const saved = localStorage.getItem('myFlightsData');
+  if (saved) {
+    try { flights = JSON.parse(saved); } 
+    catch (e) { flights = []; }
+  }
+}
+
+function loadLeaflet() {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(link);
+
+  const script = document.createElement('script');
+  script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  script.onload = function () {
+    document.getElementById('map-loading').style.display = 'none';
+    initMap();
+  };
+  script.onerror = function () {
+    const el = document.getElementById('map-loading');
+    el.innerHTML = '<span style="color:#ff6b6b">地图加载失败，请检查网络连接后刷新</span>';
+  };
+  document.head.appendChild(script);
+}
+
+function initMap() {
+  map = L.map('map', { center: [30, 105], zoom: 4, worldCopyJump: true });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 18,
+  }).addTo(map);
+  renderMap();
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
+}
+
+function gcArc(lat1, lon1, lat2, lon2, steps) {
+  const toRad=d=>d*Math.PI/180, toDeg=r=>r*180/Math.PI;
+  const φ1=toRad(lat1),λ1=toRad(lon1),φ2=toRad(lat2),λ2=toRad(lon2);
+  const d=2*Math.asin(Math.sqrt(Math.sin((φ2-φ1)/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin((λ2-λ1)/2)**2));
+  
+  if(d===0) {
+    let lon = lon1;
+    while (lon < -20) lon += 360;
+    while (lon >= 340) lon -= 360;
+    return [[[lat1, lon]]];
+  }
+
+  const lines = [];
+  let currentLine = [];
+  
+  for(let i=0;i<=steps;i++){
+    const f=i/steps;
+    const A=Math.sin((1-f)*d)/Math.sin(d), B=Math.sin(f*d)/Math.sin(d);
+    const x=A*Math.cos(φ1)*Math.cos(λ1)+B*Math.cos(φ2)*Math.cos(λ2);
+    const y=A*Math.cos(φ1)*Math.sin(λ1)+B*Math.cos(φ2)*Math.sin(λ2);
+    const z=A*Math.sin(φ1)+B*Math.sin(φ2);
+    
+    let lat = toDeg(Math.atan2(z,Math.sqrt(x*x+y*y)));
+    let lon = toDeg(Math.atan2(y,x));
+
+    while (lon < -20) lon += 360;
+    while (lon >= 340) lon -= 360;
+
+    if (currentLine.length > 0) {
+      const lastLon = currentLine[currentLine.length-1][1];
+      if (Math.abs(lon - lastLon) > 180) {
+        lines.push(currentLine);
+        currentLine = [];
+      }
+    }
+    currentLine.push([lat, lon]);
+  }
+  lines.push(currentLine);
+  return lines;
+}
+
+function dotIcon(active) {
+  const s=active?14:10;
+  return L.divIcon({
+    html:`<div style="width:${s}px;height:${s}px;background:${active?'#fff':'#4a9eff'};border-radius:50%;border:2.5px solid ${active?'#4a9eff':'rgba(255,255,255,0.5)'};${active?'box-shadow:0 0 8px rgba(74,158,255,0.9);':''}"></div>`,
+    className:'', iconSize:[s,s], iconAnchor:[s/2,s/2],
+  });
+}
+
+function renderMap() {
+  if (!map) return;
+  mapLayers.arcs.forEach(l=>map.removeLayer(l));
+  mapLayers.markers.forEach(l=>map.removeLayer(l));
+  mapLayers={arcs:[],markers:[]};
+
+  const markerCoords = {};
+
+  flights.forEach((f,i)=>{
+    const a1=AIRPORTS[f.from], a2=AIRPORTS[f.to], activeLine=i===activeIdx;
+    const segments = gcArc(a1.lat,a1.lon,a2.lat,a2.lon,80);
+    
+    segments.forEach(segment => {
+      const line=L.polyline(segment,{
+        color:activeLine?'#4a9eff':'rgba(140,190,255,0.5)',
+        weight:activeLine?2.5:1.5,
+        dashArray:activeLine?undefined:'6 5',
+      }).addTo(map);
+      mapLayers.arcs.push(line);
+    });
+
+    const pt1 = segments[0][0];
+    const pt2 = segments[segments.length-1][segments[segments.length-1].length-1];
+    
+    const key1 = `${f.from}_${pt1[0].toFixed(2)}_${pt1[1].toFixed(2)}`;
+    const key2 = `${f.to}_${pt2[0].toFixed(2)}_${pt2[1].toFixed(2)}`;
+    
+    const active1 = activeIdx>=0 && (flights[activeIdx].from===f.from || flights[activeIdx].to===f.from);
+    const active2 = activeIdx>=0 && (flights[activeIdx].from===f.to || flights[activeIdx].to===f.to);
+
+    if (!markerCoords[key1]) markerCoords[key1] = { code: f.from, active: active1, coords: pt1 };
+    else if (active1) markerCoords[key1].active = true;
+
+    if (!markerCoords[key2]) markerCoords[key2] = { code: f.to, active: active2, coords: pt2 };
+    else if (active2) markerCoords[key2].active = true;
+  });
+
+  Object.values(markerCoords).forEach(m => {
+    const a = AIRPORTS[m.code];
+    const marker = L.marker(m.coords, {icon:dotIcon(m.active)})
+      .bindTooltip(`<b>${m.code}</b>&nbsp;${a.city}`,{className:'ap-tip',direction:'top',offset:[0,-8]})
+      .addTo(map);
+    mapLayers.markers.push(marker);
+  });
+
+  if(mapLayers.arcs.length > 0){
+    const allPts = mapLayers.arcs.flatMap(line => line.getLatLngs());
+    map.fitBounds(L.latLngBounds(allPts).pad(0.15));
+  }
+}
+
+function renderStats() {
+  const n=flights.length, totalDist=flights.reduce((s,f)=>s+f.dist,0);
+  const longHaul=flights.filter(f=>f.dist>3700).length;
+  const ap=new Set(flights.flatMap(f=>[f.from,f.to]));
+  const ct=new Set([...ap].map(a=>AIRPORTS[a].country));
+  const hrs=Math.floor(totalDist/900), mins=Math.round((totalDist/900-hrs)*60);
+  document.getElementById('st-flights').textContent=n;
+  document.getElementById('st-longhaul').textContent=longHaul+' 长途';
+  document.getElementById('st-dist').textContent=totalDist>=1000?(totalDist/1000).toFixed(1)+'k km':totalDist+' km';
+  document.getElementById('st-earth').textContent=(totalDist/40075).toFixed(2)+'x 地球周长';
+  document.getElementById('st-time').textContent=hrs+'h '+mins+'m';
+  document.getElementById('st-airports').textContent=ap.size;
+  document.getElementById('st-countries').textContent=ct.size+' 个国家/地区';
+  document.getElementById('ov-dist').textContent=totalDist.toLocaleString()+' km';
+  document.getElementById('empty-hint').style.display=n?'none':'block';
+}
+
+function renderList() {
+  const list=document.getElementById('flight-list');
+  list.innerHTML='';
+  flights.forEach((f,i)=>{
+    const el=document.createElement('div');
+    el.className='flight-item'+(i===activeIdx?' active':'');
+    el.innerHTML=`
+      <div class="flight-dot${i===activeIdx?' active':''}"></div>
+      <div style="flex:1;min-width:0">
+        <div class="flight-route">${f.from} → ${f.to}</div>
+        <div class="flight-info">${AIRPORTS[f.from].city} → ${AIRPORTS[f.to].city}</div>
+      </div>
+      <div class="flight-dist">${f.dist.toLocaleString()} km</div>
+      <span class="remove-btn" onclick="event.stopPropagation();removeFlight(${i})">×</span>`;
+    el.onclick=()=>{activeIdx=i===activeIdx?-1:i;renderAll();};
+    list.appendChild(el);
+  });
+}
+
+function renderAll(){renderStats();renderList();renderMap();}
+
+function addFlight(){
+  const from=document.getElementById('inp-from').value.trim().toUpperCase();
+  const to=document.getElementById('inp-to').value.trim().toUpperCase();
+  const err=document.getElementById('err-msg');
+  if(!AIRPORTS[from]){err.textContent=`未找到机场代码: ${from||'(空)'}`;return;}
+  if(!AIRPORTS[to]){err.textContent=`未找到机场代码: ${to||'(空)'}`;return;}
+  if(from===to){err.textContent='出发和目的地不能相同';return;}
+  err.textContent='';
+  flights.push({from,to,dist:haversine(AIRPORTS[from].lat,AIRPORTS[from].lon,AIRPORTS[to].lat,AIRPORTS[to].lon)});
+  document.getElementById('inp-from').value='';
+  document.getElementById('inp-to').value='';
+  document.getElementById('inp-from').focus();
+  saveFlights();
+  renderAll();
+}
+
+function removeFlight(i){
+  flights.splice(i,1);
+  if(activeIdx>=flights.length)activeIdx=-1;
+  saveFlights();
+  renderAll();
+}
+
+document.getElementById('inp-from').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('inp-to').focus();});
+document.getElementById('inp-to').addEventListener('keydown',e=>{if(e.key==='Enter')addFlight();});
+['inp-from','inp-to'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',function(){
+    const p=this.selectionStart; this.value=this.value.toUpperCase(); this.setSelectionRange(p,p);
+  });
+});
+
+loadFlights();
+renderStats();
+loadLeaflet();
+</script>
+</body>
+</html>
