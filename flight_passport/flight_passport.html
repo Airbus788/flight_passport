@@ -347,7 +347,7 @@ function haversine(lat1, lon1, lat2, lon2) {
   return Math.round(R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)));
 }
 
-function gcArc(lat1, lon1, lat2, lon2, steps) {
+function gcArc(lat1, lon1, lat2, lon2, steps, offset = 0) {
   const toRad=d=>d*Math.PI/180, toDeg=r=>r*180/Math.PI;
   const φ1=toRad(lat1),λ1=toRad(lon1),φ2=toRad(lat2),λ2=toRad(lon2);
   const d=2*Math.asin(Math.sqrt(Math.sin((φ2-φ1)/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin((λ2-λ1)/2)**2));
@@ -358,6 +358,15 @@ function gcArc(lat1, lon1, lat2, lon2, steps) {
     while (lon >= 340) lon -= 360;
     return [[[lat1, lon]]];
   }
+
+  // 计算平面法向量，用于确定线条偏移的垂直方向
+  const dLat = lat2 - lat1;
+  let dLon = lon2 - lon1;
+  if (dLon > 180) dLon -= 360;
+  if (dLon < -180) dLon += 360;
+  const len = Math.sqrt(dLat*dLat + dLon*dLon) || 1;
+  const nx = -dLon / len;
+  const ny = dLat / len;
 
   const lines = [];
   let currentLine = [];
@@ -371,6 +380,13 @@ function gcArc(lat1, lon1, lat2, lon2, steps) {
     
     let lat = toDeg(Math.atan2(z,Math.sqrt(x*x+y*y)));
     let lon = toDeg(Math.atan2(y,x));
+
+    // 如果存在偏移量，利用正弦函数使线条中段弯曲，两端不动
+    if (offset !== 0) {
+      const shift = offset * Math.sin(f * Math.PI);
+      lat += nx * shift;
+      lon += ny * shift;
+    }
 
     while (lon < -20) lon += 360;
     while (lon >= 340) lon -= 360;
@@ -403,10 +419,21 @@ function renderMap() {
   mapLayers={arcs:[],markers:[]};
 
   const markerCoords = {};
+  const routeCount = {}; // 用于记录每条航线重复出现的次数
 
   flights.forEach((f,i)=>{
     const a1=AIRPORTS[f.from], a2=AIRPORTS[f.to], activeLine=i===activeIdx;
-    const segments = gcArc(a1.lat,a1.lon,a2.lat,a2.lon,80);
+    
+    // 生成无视方向的唯一航线键值（如 PEK-XIY 和 XIY-PEK 会被判定为同一条）
+    const routeKey = [f.from, f.to].sort().join('-');
+    routeCount[routeKey] = (routeCount[routeKey] || 0) + 1;
+    
+    // 计算当前重复航线的偏移量幅度：0, 1.5, -1.5, 3.0, -3.0...
+    const c = routeCount[routeKey] - 1;
+    const offset = c === 0 ? 0 : (c % 2 !== 0 ? 1 : -1) * Math.ceil(c / 2) * 1.5;
+
+    // 将偏移量传入 gcArc 函数
+    const segments = gcArc(a1.lat,a1.lon,a2.lat,a2.lon,80, offset);
     
     segments.forEach(segment => {
       const line=L.polyline(segment,{
