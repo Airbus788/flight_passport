@@ -1,0 +1,4 @@
+Flight Passport is a lightweight, vanilla JavaScript single-page application designed for aviation enthusiasts to track, visualize, and manage their personal flight history. It features an interactive, dark-themed Leaflet map that accurately renders flight routes as smooth great-circle arcs.
+To ensure geographical fidelity, the system implements a custom Pacific-centric projection that elegantly resolves the visual clipping artifacts typically caused by transpacific flights crossing the international dateline.
+As users input standard IATA airport codes, the app automatically calculates real-time metrics including total distance, estimated airborne hours, and unique destinations visited.
+Designed for seamless data management, Flight Passport combines hardcoded preset arrays with browser localStorage for new GUI entries。
